@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>DPD Parcel Location</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <style>
+      #map {
+        width: 100%;
+        height: calc(100vh - 80px);
+      }
+
+      h1 {
+        text-align: center;
+        font-family: "Helvetica Neue", "Segoe UI", Tahoma, Geneva,
+          Verdana, sans-serif;
+        color: #2c3e50;
+        text-shadow: 1px 1px #ecf0f1;
+      }
+
+      body {
+        background-color: #ecf0f1;
+        color: #34495e;
+        font-family: "Helvetica Neue", "Segoe UI", Tahoma, Geneva,
+          Verdana, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h1 style="margin: 0;">DPD Tracker</h1>
+      <div style="display: flex; align-items: center;">
+        <input type="text" id="parcelId" placeholder="Parcel ID" />
+        <button onclick="setParcelId()">Set</button>
+      </div>
+    </div>
+
+    <br style="clear:both" />
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      // Global variable to store the map instance
+      let homeLatLng = [48, 16];
+      const radius = 250;
+      const parcelId = new URLSearchParams(window.location.search).get(
+        "parcelId"
+      ) || "000";
+
+      let map;
+      let vehicleMarker;
+      let homeMarker;
+      let notificationSent = false;
+      let locationHistory = [];
+
+      // Request permission for notification
+      window.Notification.requestPermission();
+
+      async function setParcelId() {
+        const newParcelId = document.getElementById("parcelId").value;
+        if (!newParcelId) {
+          return;
+        }
+
+        console.log(`Setting parcel ID to ${newParcelId}`);
+        window.location.href = `?parcelId=${newParcelId}`;
+      }
+
+      async function setHomeMarker() {
+        if (homeMarker) {
+          map.removeLayer(homeMarker);
+        }
+
+        homeMarker = L.circle(homeLatLng, {
+          color: "red",
+          fillColor: "#f03",
+          fillOpacity: 0.1,
+          radius: radius,
+        })
+          .addTo(map)
+          .bindPopup("Home Address");
+      }
+
+      // Function to initialize the map
+      async function initMap() {
+        map = L.map("map").setView(homeLatLng, 15); // Default center location and zoom level
+
+        // Add a tile layer to display the map
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "&copy; OpenStreetMap contributors",
+        }).addTo(map);
+
+        await setHomeMarker();
+
+        // Make the initial fetch request
+        await fetchLocation();
+      }
+
+      async function checkDistance() {
+        const distance = vehicleMarker.getLatLng().distanceTo(homeLatLng);
+        console.log(`Distance: ${distance}m`);
+        if (distance < radius) {
+          console.log("Parcel is near home address!");
+          if (notificationSent) {
+            console.log("Notification sent, not showing again.");
+            return;
+          }
+
+          const notification = new Notification("Parcel Location", {
+            body: `The parcel is within ${radius} of the target location.`,
+          });
+          notificationSent = true;
+
+          notification.onclick = () => {
+            window.focus();
+          };
+        }
+      }
+
+      // Function to fetch location and update the map
+      async function fetchLocation() {
+        console.log(`Fetching location at ${new Date()}`);
+
+        const ret = await fetch(
+          "https://www.mydpd.at/jws.php/parcel/getLTPos",
+          {
+            method: "POST",
+            headers: {
+              accept: "application/json, text/javascript, */*; q=0.01",
+              "content-type": "application/json; charset=UTF-8",
+              "x-requested-with": "XMLHttpRequest",
+            },
+            referrer: "https://www.mydpd.at/meine-pakete",
+            body: JSON.stringify([parcelId, "0727"]),
+            mode: "cors",
+            credentials: "include",
+          }
+        );
+
+        // Parse the response as JSON
+        const data = await ret.json();
+
+        // Check if the response is successful and has valid latitude and longitude
+        if (data.state !== "success") {
+          console.error("Error fetching location, response not successful");
+          return;
+        }
+
+        if (!(data.data.lat && data.data.lng)) {
+          console.error("Error fetching location, no latitude or longitude");
+          return;
+        }
+
+        console.log(`Location: ${data.data.lat}, ${data.data.lng}`);
+        const latLng = [parseFloat(data.data.lat), parseFloat(data.data.lng)];
+
+        locationHistory.push([new Date().toISOString(), latLng]);
+        window.locationHistory = locationHistory;
+
+        if (vehicleMarker) {
+          vehicleMarker.setLatLng(latLng);
+        } else {
+          vehicleMarker = L.marker(latLng)
+            .addTo(map)
+            .bindPopup("Parcel Location");
+        }
+        map.setView(latLng);
+
+        checkDistance();
+      }
+
+      // Get the user's current location
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          homeLatLng = [position.coords.latitude, position.coords.longitude];
+          console.log(`Home location: ${homeLatLng}`);
+        },
+        (error) => {
+          console.error(error);
+        }
+      );
+
+      // Call fetchLocation function every X seconds
+      document.getElementById("parcelId").value = parcelId;
+      setInterval(fetchLocation, 10000);
+      initMap();
+    </script>
+  </body>
+</html>

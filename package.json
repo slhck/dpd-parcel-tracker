@@ -1,0 +1,10 @@
+{
+  "name": "dpd-parcel-tracker",
+  "scripts": {
+    "start": "node start_chrome.mjs"
+  },
+  "dependencies": {
+    "chrome-launcher": "^1.0.0",
+    "express": "^4.18.2"
+  }
+}
