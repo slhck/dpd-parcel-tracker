@@ -22,7 +22,6 @@ https.createServer({ key, cert }, app).listen(port, () => {
 ChromeLauncher.launch({
   startingUrl: `https://localhost:${port}`,
   chromeFlags: [
-    "--disable-web-security",
     "--allow-insecure-localhost",
     "--autoplay-policy=no-user-gesture-required",
   ],
